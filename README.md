@@ -20,4 +20,14 @@ license-lantern requirements.txt --fail-unresolved
 - No package registry, network service, vulnerability database, telemetry, or source-code scanner is used.
 - Input files are read-only and outputs cannot replace them.
 
-Python 3.11+ on Windows, macOS, and Linux. Current release: **v1.0.0**. Pull requests are reviewed. MIT licensed.
+Python 3.11+ on Windows, macOS, and Linux. Current release: **v1.1.0**. Pull requests are reviewed. MIT licensed.
+
+## Version 1.1.0: reviewed improvements
+
+Parse SPDX expressions, include nested CycloneDX components and declared npm alias identities, and add sourced attribution overrides with deterministic inventory diffs.
+
+```bash
+license-lantern pyproject.toml --inventory review.json
+```
+
+Expressions are parsed by license-expression against its bundled license list. Original declarations remain visible; unknown or malformed expressions remain unresolved, and SPDX output uses NOASSERTION for them. Nested CycloneDX components and expression entries are included; npm lockfile name metadata preserves actual package names for aliases. --overrides accepts a local JSON array with exact name/version/source identity, license_declared, evidence, reviewer and reviewed_at. Each override must match one component; its original declaration and review provenance remain in the report. --baseline compares an earlier inventory for additions, removals and license/provenance changes. Inventory hashes include review provenance. No remote license lookup or legal conclusion is made; attribution drafts still require human review and license texts. Outputs must be new and distinct.
