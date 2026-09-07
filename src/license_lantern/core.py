@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from .review import apply_overrides, inventory_diff
+
 
 @dataclass(frozen=True, order=True)
 class Component:
@@ -26,9 +28,9 @@ def _license(value: object) -> str:
         return value.strip()
     if isinstance(value, list):
         names = [_license(item) for item in value]
-        return " AND ".join(name for name in names if name != "NOASSERTION") or "NOASSERTION"
+        return " AND ".join(f"({name})" for name in names) or "NOASSERTION"
     data = _mapping(value)
-    return str(data.get("id") or data.get("name") or "NOASSERTION")
+    return str(data.get("expression") or data.get("id") or data.get("name") or "NOASSERTION")
 
 
 def _dependency_name(specification: str) -> str:
@@ -45,7 +47,7 @@ def read_components(path: Path) -> list[Component]:
             if not location:
                 continue
             item = _mapping(raw)
-            package_name = location.rsplit("node_modules/", 1)[-1]
+            package_name = str(item.get("name") or location.rsplit("node_modules/", 1)[-1])
             components.append(
                 Component(
                     package_name,
@@ -75,8 +77,14 @@ def read_components(path: Path) -> list[Component]:
     data = _mapping(json.loads(path.read_text(encoding="utf-8")))
     if data.get("bomFormat") == "CycloneDX":
         components = []
-        for raw in data.get("components", []):
+        pending = list(data.get("components", []))
+        while pending:
+            raw = pending.pop(0)
             item = _mapping(raw)
+            nested = item.get("components", [])
+            if not isinstance(nested, list):
+                raise TypeError("CycloneDX nested components must be an array")
+            pending.extend(nested)
             licenses = [
                 _license(_mapping(entry).get("license", entry))
                 for entry in item.get("licenses", [])
@@ -85,7 +93,12 @@ def read_components(path: Path) -> list[Component]:
                 Component(
                     str(item.get("name", "UNKNOWN")),
                     str(item.get("version", "UNKNOWN")),
-                    " AND ".join(licenses) or "NOASSERTION",
+                    (
+                        licenses[0]
+                        if len(licenses) == 1
+                        else " AND ".join(f"({value})" for value in licenses)
+                    )
+                    or "NOASSERTION",
                     path.name,
                 )
             )
@@ -93,20 +106,23 @@ def read_components(path: Path) -> list[Component]:
     raise ValueError(f"unsupported dependency input: {path.name}")
 
 
-def build_inventory(paths: list[Path]) -> dict[str, object]:
+def build_inventory(
+    paths: list[Path], *, overrides: Any = None, baseline: Any = None
+) -> dict[str, object]:
     components = sorted({component for path in paths for component in read_components(path)})
-    unresolved = sum(component.license_declared == "NOASSERTION" for component in components)
+    records = apply_overrides([asdict(component) for component in components], overrides or [])
+    unresolved = sum(not record["expression"]["valid"] for record in records)
     fingerprint = hashlib.sha256(
-        "\n".join(
-            f"{c.name}|{c.version}|{c.license_declared}|{c.source}" for c in components
-        ).encode()
+        json.dumps(records, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
     return {
         "schemaVersion": 1,
         "componentCount": len(components),
         "unresolvedLicenseCount": unresolved,
         "inventorySha256": fingerprint,
-        "components": [asdict(component) for component in components],
+        "components": records,
+        "comparison": inventory_diff(records, baseline) if baseline is not None else None,
+        "provenance": "Local declarations and explicit reviewer overrides; no remote license lookup or legal conclusion",
         "reviewRequired": bool(unresolved),
     }
 
@@ -125,7 +141,9 @@ def build_spdx(inventory: dict[str, object], document_name: str) -> dict[str, ob
                 "downloadLocation": "NOASSERTION",
                 "filesAnalyzed": False,
                 "licenseConcluded": "NOASSERTION",
-                "licenseDeclared": raw["license_declared"],
+                "licenseDeclared": raw["expression"]["normalized"]
+                if raw.get("expression", {}).get("valid")
+                else "NOASSERTION",
                 "copyrightText": "NOASSERTION",
             }
         )
