@@ -12,11 +12,12 @@ def test_reads_package_lock(tmp_path: Path) -> None:
     path.write_text(
         json.dumps(
             {
+                "lockfileVersion": 3,
                 "packages": {
                     "": {},
                     "node_modules/alpha": {"version": "1.2.3", "license": "MIT"},
                     "node_modules/beta": {"version": "2.0.0"},
-                }
+                },
             }
         ),
         encoding="utf-8",
@@ -55,7 +56,12 @@ def test_reads_cyclonedx_license_shapes(tmp_path: Path) -> None:
 def test_outputs_spdx_and_notice(tmp_path: Path) -> None:
     path = tmp_path / "package-lock.json"
     path.write_text(
-        json.dumps({"packages": {"node_modules/a": {"version": "1", "license": "MIT"}}}),
+        json.dumps(
+            {
+                "lockfileVersion": 3,
+                "packages": {"node_modules/a": {"version": "1", "license": "MIT"}},
+            }
+        ),
         encoding="utf-8",
     )
     inventory = build_inventory([path])

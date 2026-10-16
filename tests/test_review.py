@@ -24,13 +24,14 @@ def test_nested_scoped_alias_and_review_provenance(tmp_path: Path) -> None:
     lock.write_text(
         json.dumps(
             {
+                "lockfileVersion": 3,
                 "packages": {
                     "node_modules/@scope/alias": {
                         "name": "@scope/actual",
                         "version": "1",
                         "license": "MIT",
                     }
-                }
+                },
             }
         ),
         encoding="utf-8",

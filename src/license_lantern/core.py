@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from . import __version__
 from .review import apply_overrides, inventory_diff
 
 
@@ -41,9 +42,26 @@ def _dependency_name(specification: str) -> str:
 def read_components(path: Path) -> list[Component]:
     name = path.name.lower()
     if name == "package-lock.json":
-        data = _mapping(json.loads(path.read_text(encoding="utf-8")))
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            not isinstance(data, dict)
+            or type(data.get("lockfileVersion")) is not int
+            or data["lockfileVersion"] not in (2, 3)
+        ):
+            raise ValueError("npm lockfile requires supported integer lockfileVersion 2 or 3")
+        packages = data.get("packages")
+        if not isinstance(packages, dict):
+            raise ValueError("npm lockfile packages must be an object")
+        for location, item in packages.items():
+            if not isinstance(location, str) or not isinstance(item, dict):
+                raise ValueError("npm lockfile package entries must be objects")  # noqa: TRY004
+            if any(
+                field in item and (not isinstance(item[field], str) or not item[field].strip())
+                for field in ("name", "version")
+            ):
+                raise ValueError("npm lockfile package name/version must be non-empty strings")
         components = []
-        for location, raw in _mapping(data.get("packages")).items():
+        for location, raw in packages.items():
             if not location:
                 continue
             item = _mapping(raw)
@@ -154,7 +172,7 @@ def build_spdx(inventory: dict[str, object], document_name: str) -> dict[str, ob
         "name": document_name,
         "documentNamespace": f"https://loganpendragonmultiverse.github.io/license-lantern/inventory/{inventory['inventorySha256']}",
         "creationInfo": {
-            "creators": ["Tool: License-Lantern-1.0.0"],
+            "creators": [f"Tool: License-Lantern-{__version__}"],
             "created": "1970-01-01T00:00:00Z",
         },
         "packages": packages,
