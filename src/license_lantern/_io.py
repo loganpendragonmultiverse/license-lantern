@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -33,8 +34,19 @@ def load_json(path: Path) -> Any:
     def finite(value: str) -> None:
         raise ValueError("JSON constants must be finite")
 
+    def finite_float(text: str) -> float:
+        number = float(text)
+        if not math.isfinite(number):
+            raise ValueError("JSON numbers must be finite")
+        return number
+
     try:
-        value = json.loads(read_text(path), object_pairs_hook=unique, parse_constant=finite)
+        value = json.loads(
+            read_text(path),
+            object_pairs_hook=unique,
+            parse_constant=finite,
+            parse_float=finite_float,
+        )
     except RecursionError as exc:
         raise ValueError("JSON nesting exceeds the supported depth") from exc
     pending = [(value, 0)]

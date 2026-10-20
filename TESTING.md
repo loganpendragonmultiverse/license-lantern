@@ -21,3 +21,7 @@ Use `license-lantern examples/bom.json --fail-unresolved` for a synthetic, resol
 JSON inputs reject nesting beyond 128 containers with an actionable error, including parser recursion failures.
 
 CycloneDX license choices accept a list of license objects (each with exactly one nonempty string id or name), or one nonempty string expression. Mixed choices and malformed identity types fail validation; this validates the consumed license fields, not the complete CycloneDX schema.
+
+Wheel installations include the synthetic example at `<environment>/share/doc/license-lantern/examples/bom.json` (where `<environment>` is the Python installation or virtual-environment prefix). Pass this path to `license-lantern` to run the example outside a source checkout.
+
+JSON numeric overflow (such as `1e400`) is rejected alongside non-finite constants; ordinary finite fractions remain supported.
