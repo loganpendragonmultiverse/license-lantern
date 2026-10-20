@@ -203,3 +203,29 @@ def test_valid_cyclonedx_license_choices_keep_their_identity(tmp_path, choice):
         json.dumps({"bomFormat": "CycloneDX", "components": [{"name": "a", "licenses": [choice]}]})
     )
     assert build_inventory([path])["unresolvedLicenseCount"] == 0
+
+
+def test_finite_json_fractions_remain_supported(tmp_path):
+    path = tmp_path / "finite.json"
+    path.write_text('{"fraction":1.25,"tiny":1e-10}')
+    assert _io.load_json(path) == {"fraction": 1.25, "tiny": 1e-10}
+
+
+@pytest.mark.parametrize("number", ["1e400", "-1e400"])
+@pytest.mark.parametrize("option", [None, "--overrides", "--baseline"])
+def test_json_numeric_overflow_is_rejected_for_every_input(tmp_path, capsys, number, option):
+    valid = source(tmp_path)
+    bad = tmp_path / "overflow.json"
+    bad.write_text('{"number":' + number + "}")
+    args = [str(bad)] if option is None else [str(valid), option, str(bad)]
+    assert main(args) == 2
+    assert "numbers must be finite" in capsys.readouterr().err
+
+
+def test_deep_toml_dependencies_are_actionable_instead_of_a_traceback(tmp_path, capsys):
+    path = tmp_path / "pyproject.toml"
+    path.write_text("[project]\ndependencies=" + "[" * 1100 + '"requests"' + "]" * 1100)
+    with pytest.raises((ValueError, TypeError)):
+        build_inventory([path])
+    assert main([str(path)]) == 2
+    assert "error:" in capsys.readouterr().err

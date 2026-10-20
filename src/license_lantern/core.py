@@ -101,7 +101,10 @@ def read_components(path: Path) -> list[Component]:
             )
         return components
     if name == "pyproject.toml":
-        data = tomllib.loads(read_text(path))
+        try:
+            data = tomllib.loads(read_text(path))
+        except RecursionError as exc:
+            raise ValueError("pyproject TOML nesting exceeds the supported parser depth") from exc
         project = data.get("project", {})
         if not isinstance(project, dict):
             raise TypeError("pyproject project must be an object")

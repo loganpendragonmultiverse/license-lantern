@@ -30,3 +30,5 @@ addopts = "--cov=license_lantern --cov-branch --cov-report=term-missing --cov-fa
 
 [tool.setuptools.data-files]
 "share/doc/license-lantern" = ["README.md", "CHANGELOG.md", "DEVELOPMENT.md", "TESTING.md"]
+
+"share/doc/license-lantern/examples" = ["examples/bom.json"]

@@ -11,6 +11,12 @@ JSON inputs reject nesting beyond 128 containers with an actionable error, inclu
 
 CycloneDX license choices accept a list of license objects (each with exactly one nonempty string id or name), or one nonempty string expression. Mixed choices and malformed identity types fail validation; this validates the consumed license fields, not the complete CycloneDX schema.
 
+- Install the synthetic example with the wheel as well as the source distribution.
+
+- Reject JSON numeric overflow while preserving finite fractions.
+
+- Normalize deep TOML parser failures to actionable input errors.
+
 ## [1.1.1] - 2026-10-16
 
 npm package-lock.json inputs must declare integer lockfileVersion 2 or 3 and an object-valued packages map. Empty maps and root-only maps are valid empty inventories. Every package entry must be an object, with non-empty text name/version fields when present. Unsupported versions and malformed structures fail before inventory, SPDX or NOTICE output. Alias identities, reviewer overrides, unresolved declarations and deterministic inventory hashes retain their existing meaning.
