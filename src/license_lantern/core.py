@@ -4,11 +4,13 @@ import hashlib
 import json
 import re
 import tomllib
+from collections import deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
 
 from . import __version__
+from ._io import load_json, read_text
 from .review import apply_overrides, inventory_diff
 
 
@@ -34,6 +36,29 @@ def _license(value: object) -> str:
     return str(data.get("expression") or data.get("id") or data.get("name") or "NOASSERTION")
 
 
+def _cyclonedx_licenses(value: object) -> list[str]:
+    if not isinstance(value, list) or any(not isinstance(entry, dict) for entry in value):
+        raise TypeError("CycloneDX licenses must be an array of objects")
+    result = []
+    for entry in value:
+        if "expression" in entry:
+            if len(value) != 1 or set(entry) - {"expression", "bom-ref"}:
+                raise ValueError("CycloneDX expression must be the sole license choice")
+            declaration = entry["expression"]
+        else:
+            if set(entry) != {"license"} or not isinstance(entry["license"], dict):
+                raise TypeError("CycloneDX license choice requires a license object")
+            license_data = entry["license"]
+            identities = [key for key in ("id", "name") if key in license_data]
+            if len(identities) != 1:
+                raise ValueError("CycloneDX license requires exactly one id or name")
+            declaration = license_data[identities[0]]
+        if not isinstance(declaration, str) or not declaration.strip():
+            raise TypeError("CycloneDX license identity/expression must be a nonempty string")
+        result.append(declaration.strip())
+    return result
+
+
 def _dependency_name(specification: str) -> str:
     match = re.match(r"\s*([A-Za-z0-9_.-]+)", specification)
     return match.group(1) if match else specification.strip()
@@ -42,7 +67,7 @@ def _dependency_name(specification: str) -> str:
 def read_components(path: Path) -> list[Component]:
     name = path.name.lower()
     if name == "package-lock.json":
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = load_json(path)
         if (
             not isinstance(data, dict)
             or type(data.get("lockfileVersion")) is not int
@@ -76,8 +101,15 @@ def read_components(path: Path) -> list[Component]:
             )
         return components
     if name == "pyproject.toml":
-        data = _mapping(tomllib.loads(path.read_text(encoding="utf-8")))
-        dependencies = _mapping(data.get("project")).get("dependencies", [])
+        data = tomllib.loads(read_text(path))
+        project = data.get("project", {})
+        if not isinstance(project, dict):
+            raise TypeError("pyproject project must be an object")
+        dependencies = project.get("dependencies", [])
+        if not isinstance(dependencies, list) or any(
+            not isinstance(item, str) or not item.strip() for item in dependencies
+        ):
+            raise TypeError("pyproject dependencies must be an array of nonempty strings")
         return [
             Component(_dependency_name(str(item)), "UNKNOWN", "NOASSERTION", path.name)
             for item in dependencies
@@ -85,28 +117,37 @@ def read_components(path: Path) -> list[Component]:
         ]
     if name.endswith("requirements.txt") or name == "requirements.txt":
         components = []
-        for line in path.read_text(encoding="utf-8").splitlines():
+        for line in read_text(path).splitlines():
             clean = line.split("#", 1)[0].strip()
             if not clean or clean.startswith("-"):
                 continue
             version = clean.split("==", 1)[1] if "==" in clean else "UNKNOWN"
             components.append(Component(_dependency_name(clean), version, "NOASSERTION", path.name))
         return components
-    data = _mapping(json.loads(path.read_text(encoding="utf-8")))
+    data = _mapping(load_json(path))
     if data.get("bomFormat") == "CycloneDX":
         components = []
-        pending = list(data.get("components", []))
+        raw_components = data.get("components", [])
+        if not isinstance(raw_components, list):
+            raise TypeError("CycloneDX components must be an array")
+        pending = deque(raw_components)
         while pending:
-            raw = pending.pop(0)
-            item = _mapping(raw)
+            item = pending.popleft()
+            if (
+                not isinstance(item, dict)
+                or not isinstance(item.get("name"), str)
+                or not item["name"].strip()
+            ):
+                raise TypeError("CycloneDX components require a nonempty name")
+            if "version" in item and (
+                not isinstance(item["version"], str) or not item["version"].strip()
+            ):
+                raise TypeError("CycloneDX component versions must be nonempty strings")
             nested = item.get("components", [])
             if not isinstance(nested, list):
                 raise TypeError("CycloneDX nested components must be an array")
             pending.extend(nested)
-            licenses = [
-                _license(_mapping(entry).get("license", entry))
-                for entry in item.get("licenses", [])
-            ]
+            licenses = _cyclonedx_licenses(item.get("licenses", []))
             components.append(
                 Component(
                     str(item.get("name", "UNKNOWN")),
@@ -128,7 +169,14 @@ def build_inventory(
     paths: list[Path], *, overrides: Any = None, baseline: Any = None
 ) -> dict[str, object]:
     components = sorted({component for path in paths for component in read_components(path)})
-    records = apply_overrides([asdict(component) for component in components], overrides or [])
+    identities = [(item.name, item.version, item.source) for item in components]
+    if len(identities) != len(set(identities)):
+        raise ValueError(
+            "conflicting component declarations share one name/version/source identity"
+        )
+    records = apply_overrides(
+        [asdict(component) for component in components], [] if overrides is None else overrides
+    )
     unresolved = sum(not record["expression"]["valid"] for record in records)
     fingerprint = hashlib.sha256(
         json.dumps(records, sort_keys=True, separators=(",", ":")).encode()
