@@ -25,3 +25,5 @@ CycloneDX license choices accept a list of license objects (each with exactly on
 Wheel installations include the synthetic example at `<environment>/share/doc/license-lantern/examples/bom.json` (where `<environment>` is the Python installation or virtual-environment prefix). Pass this path to `license-lantern` to run the example outside a source checkout.
 
 JSON numeric overflow (such as `1e400`) is rejected alongside non-finite constants; ordinary finite fractions remain supported.
+
+Deep TOML parser failures return actionable input errors; malformed nested dependency arrays remain invalid instead of producing an uncaught parser traceback.

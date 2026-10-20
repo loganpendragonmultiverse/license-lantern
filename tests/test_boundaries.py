@@ -220,3 +220,12 @@ def test_json_numeric_overflow_is_rejected_for_every_input(tmp_path, capsys, num
     args = [str(bad)] if option is None else [str(valid), option, str(bad)]
     assert main(args) == 2
     assert "numbers must be finite" in capsys.readouterr().err
+
+
+def test_deep_toml_dependencies_are_actionable_instead_of_a_traceback(tmp_path, capsys):
+    path = tmp_path / "pyproject.toml"
+    path.write_text("[project]\ndependencies=" + "[" * 1100 + '"requests"' + "]" * 1100)
+    with pytest.raises((ValueError, TypeError)):
+        build_inventory([path])
+    assert main([str(path)]) == 2
+    assert "error:" in capsys.readouterr().err
